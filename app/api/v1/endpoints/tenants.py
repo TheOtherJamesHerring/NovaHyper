@@ -3,18 +3,16 @@ app/api/v1/endpoints/tenants.py
 --------------------------------
 Tenant management endpoints. All operations are MSP-admin only.
 """
-import hashlib
-import json
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.deps import CurrentUser, MSPAdminOnly, TenantDBForMSP
 from app.core.security import hash_password
-from app.models import AuditLog, Tenant, TenantStatus, User, UserRole, VM, VMStatus
+from app.models import Tenant, TenantStatus, User, UserRole, VM, VMStatus
 from app.schemas import PaginatedResponse
 from app.schemas.tenants import (
     TenantCreateRequest,
@@ -26,44 +24,10 @@ from app.schemas.tenants import (
     TenantUserInviteRequest,
     TenantUserResponse,
 )
+from app.services.audit import write_audit_event
 from app.services.vm_service import VMService
 
 router = APIRouter(prefix="/tenants", tags=["tenants"], dependencies=[MSPAdminOnly])
-
-
-async def _write_audit_event(
-    db,
-    actor: User,
-    action: str,
-    target_tenant_id: str | None,
-    resource_type: str,
-    resource_id: str | None,
-    reason: str | None = None,
-) -> None:
-    actor_id = str(actor.id)
-    payload = {
-        "actor_user_id": actor_id,
-        "action": action,
-        "target_tenant_id": target_tenant_id,
-        "resource_type": resource_type,
-        "resource_id": resource_id,
-        "reason": reason,
-        "ts": datetime.now(UTC).isoformat(),
-    }
-    payload_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
-    db.add(
-        AuditLog(
-            id=str(uuid.uuid4()),
-            tenant_id=target_tenant_id,
-            user_id=actor_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            payload_hash=payload_hash,
-            reason=reason,
-            ts=datetime.now(UTC),
-        )
-    )
 
 
 async def _tenant_counts(db, tenant_id: str) -> tuple[int, int]:
@@ -90,7 +54,7 @@ async def _tenant_detail_response(db, tenant: Tenant) -> TenantDetailResponse:
     status_code=status.HTTP_201_CREATED,
     summary="Create a tenant and first tenant admin",
 )
-async def create_tenant(body: TenantCreateRequest, db: TenantDBForMSP, user: CurrentUser) -> TenantDetailResponse:
+async def create_tenant(body: TenantCreateRequest, request: Request, db: TenantDBForMSP, user: CurrentUser) -> TenantDetailResponse:
     now = datetime.now(UTC)
     tenant = Tenant(
         id=str(uuid.uuid4()),
@@ -121,13 +85,20 @@ async def create_tenant(body: TenantCreateRequest, db: TenantDBForMSP, user: Cur
 
     try:
         await db.flush()
-        await _write_audit_event(
-            db,
-            actor=user,
+        await write_audit_event(
+            db=db,
+            request=request,
+            user=user,
             action="tenant.create",
-            target_tenant_id=tenant.id,
             resource_type="tenant",
             resource_id=tenant.id,
+            payload={
+                "tenant_id": tenant.id,
+                "user_id": user.id,
+                "action": "tenant.create",
+                "resource_type": "tenant",
+                "resource_id": tenant.id,
+            },
         )
         response = TenantDetailResponse(
             **TenantResponse.model_validate(tenant, from_attributes=True).model_dump(),
@@ -176,6 +147,7 @@ async def get_tenant(tenant_id: str, db: TenantDBForMSP, user: CurrentUser) -> T
 async def update_tenant(
     tenant_id: str,
     body: TenantUpdateRequest,
+    request: Request,
     db: TenantDBForMSP,
     user: CurrentUser,
 ) -> TenantDetailResponse:
@@ -186,13 +158,20 @@ async def update_tenant(
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(tenant, field, value)
 
-    await _write_audit_event(
-        db,
-        actor=user,
+    await write_audit_event(
+        db=db,
+        request=request,
+        user=user,
         action="tenant.update",
-        target_tenant_id=tenant.id,
         resource_type="tenant",
         resource_id=tenant.id,
+        payload={
+            "tenant_id": tenant.id,
+            "user_id": user.id,
+            "action": "tenant.update",
+            "resource_type": "tenant",
+            "resource_id": tenant.id,
+        },
     )
     response = await _tenant_detail_response(db, tenant)
     await db.commit()
@@ -208,6 +187,7 @@ async def update_tenant(
 async def invite_tenant_user(
     tenant_id: str,
     body: TenantUserInviteRequest,
+    request: Request,
     db: TenantDBForMSP,
     user: CurrentUser,
 ) -> TenantUserResponse:
@@ -229,13 +209,20 @@ async def invite_tenant_user(
 
     try:
         await db.flush()
-        await _write_audit_event(
-            db,
-            actor=user,
-            action="tenant.user_invite",
-            target_tenant_id=tenant_id,
+        await write_audit_event(
+            db=db,
+            request=request,
+            user=user,
+            action="user.create",
             resource_type="user",
             resource_id=new_user.id,
+            payload={
+                "tenant_id": tenant_id,
+                "user_id": user.id,
+                "action": "user.create",
+                "resource_type": "user",
+                "resource_id": new_user.id,
+            },
         )
         response = TenantUserResponse.model_validate(new_user, from_attributes=True)
         await db.commit()
@@ -250,6 +237,7 @@ async def invite_tenant_user(
 async def suspend_tenant(
     tenant_id: str,
     body: TenantSuspendRequest,
+    request: Request,
     db: TenantDBForMSP,
     user: CurrentUser,
 ) -> TenantDetailResponse:
@@ -268,19 +256,25 @@ async def suspend_tenant(
     ).scalars().all()
     for vm in vms:
         if vm.status in (VMStatus.running, VMStatus.paused):
-            await vm_service.perform_action(vm, "stop", force=True)
+            await vm_service.perform_action(vm, "stop", force=True, commit=False)
         else:
             vm.status = VMStatus.stopped
 
     tenant.status = TenantStatus.suspended
-    await _write_audit_event(
-        db,
-        actor=user,
+    await write_audit_event(
+        db=db,
+        request=request,
+        user=user,
         action="tenant.suspend",
-        target_tenant_id=tenant.id,
         resource_type="tenant",
         resource_id=tenant.id,
-        reason=body.reason,
+        payload={
+            "tenant_id": tenant.id,
+            "user_id": user.id,
+            "action": "tenant.suspend",
+            "resource_type": "tenant",
+            "resource_id": tenant.id,
+        },
     )
     response = await _tenant_detail_response(db, tenant)
     await db.commit()
@@ -291,6 +285,7 @@ async def suspend_tenant(
 async def reinstate_tenant(
     tenant_id: str,
     body: TenantReinstateRequest,
+    request: Request,
     db: TenantDBForMSP,
     user: CurrentUser,
 ) -> TenantDetailResponse:
@@ -299,14 +294,20 @@ async def reinstate_tenant(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
     tenant.status = TenantStatus.active
-    await _write_audit_event(
-        db,
-        actor=user,
+    await write_audit_event(
+        db=db,
+        request=request,
+        user=user,
         action="tenant.reinstate",
-        target_tenant_id=tenant.id,
         resource_type="tenant",
         resource_id=tenant.id,
-        reason=body.reason,
+        payload={
+            "tenant_id": tenant.id,
+            "user_id": user.id,
+            "action": "tenant.reinstate",
+            "resource_type": "tenant",
+            "resource_id": tenant.id,
+        },
     )
     response = await _tenant_detail_response(db, tenant)
     await db.commit()
@@ -314,7 +315,7 @@ async def reinstate_tenant(
 
 
 @router.delete("/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete suspended tenant")
-async def delete_tenant(tenant_id: str, db: TenantDBForMSP, user: CurrentUser) -> None:
+async def delete_tenant(tenant_id: str, request: Request, db: TenantDBForMSP, user: CurrentUser) -> None:
     tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
@@ -327,13 +328,20 @@ async def delete_tenant(tenant_id: str, db: TenantDBForMSP, user: CurrentUser) -
     if vm_count != 0:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tenant still has active VMs")
 
-    await _write_audit_event(
-        db,
-        actor=user,
+    await write_audit_event(
+        db=db,
+        request=request,
+        user=user,
         action="tenant.delete",
-        target_tenant_id=tenant.id,
         resource_type="tenant",
         resource_id=tenant.id,
+        payload={
+            "tenant_id": tenant.id,
+            "user_id": user.id,
+            "action": "tenant.delete",
+            "resource_type": "tenant",
+            "resource_id": tenant.id,
+        },
     )
     await db.execute(delete(Tenant).where(Tenant.id == tenant.id))
     await db.commit()

@@ -192,3 +192,6 @@ class PaginatedResponse[T](LooseModel):
     page: int
     page_size: int
     has_more: bool
+
+
+from app.schemas.audit import AuditEventResponse, AuditVerifyResponse

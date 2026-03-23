@@ -91,7 +91,7 @@ class VMService:
 
     # ── Create ─────────────────────────────────────────────────────────────
 
-    async def create(self, tenant_id: str, spec: VMCreate) -> VM:
+    async def create(self, tenant_id: str, spec: VMCreate, *, commit: bool = True) -> VM:
         """
         1. Validate host capacity
         2. Create qcow2 disk image(s)
@@ -150,12 +150,13 @@ class VMService:
             log.error("vm.create.libvirt_error", vm_id=vm.id, error=str(exc))
             # Don't re-raise — persist the error state so the user can see it
 
-        await self._db.commit()
-        await self._db.refresh(vm)
+        if commit:
+            await self._db.commit()
+            await self._db.refresh(vm)
 
-        # Schedule initial full backup and create dirty bitmap
-        if any(d.backup_enabled for d in vm.disks):
-            asyncio.create_task(self._init_dirty_bitmaps(vm))
+            # Schedule initial full backup and create dirty bitmap
+            if any(d.backup_enabled for d in vm.disks):
+                asyncio.create_task(self._init_dirty_bitmaps(vm))
 
         return vm
 
@@ -254,7 +255,7 @@ class VMService:
 
     # ── Power actions ──────────────────────────────────────────────────────
 
-    async def perform_action(self, vm: VM, action: str, force: bool = False) -> VM:
+    async def perform_action(self, vm: VM, action: str, force: bool = False, *, commit: bool = True) -> VM:
         ACTION_MAP: dict[str, tuple[VMStatus, VMStatus]] = {
             # action: (required_current_status, resulting_status)
             "start":  (VMStatus.stopped, VMStatus.running),
@@ -294,13 +295,14 @@ class VMService:
             log.error("vm.action_failed", vm_id=vm.id, action=action, error=str(exc))
             vm.status = VMStatus.error
 
-        await self._db.commit()
-        await self._db.refresh(vm)
+        if commit:
+            await self._db.commit()
+            await self._db.refresh(vm)
         return vm
 
     # ── Destroy ────────────────────────────────────────────────────────────
 
-    async def destroy(self, vm: VM) -> None:
+    async def destroy(self, vm: VM, *, commit: bool = True) -> None:
         """Undefine from libvirt and mark as deleted (soft delete)."""
         try:
             conn = _get_conn()
@@ -316,7 +318,8 @@ class VMService:
             log.warning("vm.undefine_failed", vm_id=vm.id, error=str(exc))
 
         vm.status = VMStatus.deleted
-        await self._db.commit()
+        if commit:
+            await self._db.commit()
 
     # ── Metrics ────────────────────────────────────────────────────────────
 

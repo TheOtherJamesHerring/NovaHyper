@@ -19,8 +19,9 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
-from app.api.v1.endpoints import auth, backups, tenants, vms
+from app.api.v1.endpoints import audit, auth, backups, tenants, vms
 from app.core.config import get_settings
+from app.core.middleware import register_mutating_request_log_middleware
 from app.services.metering import MeteringService
 from app.services.partition_manager import PartitionManagerService
 
@@ -104,6 +105,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    register_mutating_request_log_middleware(app)
+
     # ── Request instrumentation middleware ─────────────────────────────────
     @app.middleware("http")
     async def instrument(request: Request, call_next) -> Response:  # type: ignore
@@ -123,6 +126,7 @@ def create_app() -> FastAPI:
     app.include_router(vms.router, prefix=API_PREFIX)
     app.include_router(backups.router, prefix=API_PREFIX)
     app.include_router(tenants.router, prefix=API_PREFIX)
+    app.include_router(audit.router, prefix=API_PREFIX)
     # Future: storage, networks, audit
 
     # ── Health & metrics ───────────────────────────────────────────────────

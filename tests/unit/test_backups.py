@@ -171,7 +171,7 @@ class TestCancelBackupJob:
 
         user = MagicMock()
 
-        await cancel_backup_job(job.id, db, user)
+        await cancel_backup_job(job.id, MagicMock(), db, user)
 
         assert job.status == BackupStatus.cancelled
         assert job.finished_at is not None
@@ -189,7 +189,7 @@ class TestCancelBackupJob:
         db.execute.return_value = result
         db.commit = AsyncMock()
 
-        await cancel_backup_job(job.id, db, MagicMock())
+        await cancel_backup_job(job.id, MagicMock(), db, MagicMock())
         assert job.status == BackupStatus.cancelled
 
     @pytest.mark.asyncio
@@ -205,7 +205,7 @@ class TestCancelBackupJob:
         db.execute.return_value = result
 
         with pytest.raises(HTTPException) as exc_info:
-            await cancel_backup_job(job.id, db, MagicMock())
+            await cancel_backup_job(job.id, MagicMock(), db, MagicMock())
         assert exc_info.value.status_code == 409
 
     @pytest.mark.asyncio
@@ -219,7 +219,7 @@ class TestCancelBackupJob:
         db.execute.return_value = result
 
         with pytest.raises(HTTPException) as exc_info:
-            await cancel_backup_job("nonexistent", db, MagicMock())
+            await cancel_backup_job("nonexistent", MagicMock(), db, MagicMock())
         assert exc_info.value.status_code == 404
 
 

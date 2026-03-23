@@ -19,6 +19,15 @@ from app.schemas.tenants import (
 )
 
 
+def _request() -> MagicMock:
+    request = MagicMock()
+    request.headers = {"user-agent": "pytest"}
+    client = MagicMock()
+    client.host = "127.0.0.1"
+    request.client = client
+    return request
+
+
 def _scalar_result(*, scalar_one=None, scalar_one_or_none=None):
     result = MagicMock()
     if scalar_one is not None:
@@ -75,6 +84,7 @@ async def test_create_tenant_creates_first_admin_atomically() -> None:
             admin_password="super-secret-123",
             admin_full_name="Acme Admin",
         ),
+        _request(),
         db,
         MagicMock(),
     )
@@ -156,6 +166,7 @@ async def test_update_tenant_applies_partial_fields() -> None:
             plan_tier=PlanTier.enterprise,
             max_vcpus=128,
         ),
+        _request(),
         db,
         MagicMock(),
     )
@@ -187,6 +198,7 @@ async def test_invite_tenant_user_hashes_password() -> None:
             full_name="Read Only",
             role=UserRole.viewer,
         ),
+        _request(),
         db,
         MagicMock(),
     )

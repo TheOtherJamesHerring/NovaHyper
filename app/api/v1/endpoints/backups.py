@@ -18,6 +18,7 @@ from app.core.deps import CurrentUser, OperatorUp, TenantDB
 from app.models import BackupJob, BackupManifest, BackupStatus, BackupType, VM, VMStatus
 from app.schemas import PaginatedResponse
 from app.schemas.backups import BackupJobCreate, BackupJobResponse, BackupManifestResponse
+from app.services.audit import write_audit_event
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/backups", tags=["backups"])
@@ -60,6 +61,21 @@ async def create_backup_job(body: BackupJobCreate, request: Request, db: TenantD
     job = BackupJob(id=str(uuid.uuid4()), tenant_id=user.tenant_id, vm_id=body.vm_id,
                     job_type=body.job_type, status=BackupStatus.queued)
     db.add(job)
+    await write_audit_event(
+        db=db,
+        request=request,
+        user=user,
+        action="backup.create",
+        resource_type="backup_job",
+        resource_id=job.id,
+        payload={
+            "tenant_id": user.tenant_id,
+            "user_id": user.id,
+            "action": "backup.create",
+            "resource_type": "backup_job",
+            "resource_id": job.id,
+        },
+    )
     await db.commit()
     await db.refresh(job)
     await _publish_job(request, job.id, vm.id, user.tenant_id, job.job_type.value)
@@ -97,7 +113,7 @@ async def get_backup_job(job_id: str, db: TenantDB, user: CurrentUser) -> Backup
 
 
 @router.delete("/{job_id}", status_code=204, dependencies=[OperatorUp])
-async def cancel_backup_job(job_id: str, db: TenantDB, user: CurrentUser) -> None:
+async def cancel_backup_job(job_id: str, request: Request, db: TenantDB, user: CurrentUser) -> None:
     job = (await db.execute(select(BackupJob).where(BackupJob.id == job_id))).scalar_one_or_none()
     if job is None:
         raise HTTPException(404, "Backup job not found")
@@ -105,6 +121,21 @@ async def cancel_backup_job(job_id: str, db: TenantDB, user: CurrentUser) -> Non
         raise HTTPException(409, f"Cannot cancel job with status '{job.status.value}'")
     job.status = BackupStatus.cancelled
     job.finished_at = datetime.now(UTC)
+    await write_audit_event(
+        db=db,
+        request=request,
+        user=user,
+        action="backup.cancel",
+        resource_type="backup_job",
+        resource_id=job.id,
+        payload={
+            "tenant_id": user.tenant_id,
+            "user_id": user.id,
+            "action": "backup.cancel",
+            "resource_type": "backup_job",
+            "resource_id": job.id,
+        },
+    )
     await db.commit()
 
 

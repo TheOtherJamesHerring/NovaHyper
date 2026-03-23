@@ -6,7 +6,9 @@ VM lifecycle endpoints.  All operations are tenant-scoped via RLS.
 libvirt integration is intentionally wrapped in ``VMService`` so tests
 can swap in a mock without touching endpoint logic.
 """
-from fastapi import APIRouter, HTTPException, Query, status
+import asyncio
+
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 
 from app.core.deps import CurrentUser, OperatorUp, TenantDB, TenantAdminUp
@@ -18,6 +20,7 @@ from app.schemas import (
     VMResponse,
     VMUpdate,
 )
+from app.services.audit import write_audit_event
 from app.services.vm_service import VMService
 
 router = APIRouter(prefix="/vms", tags=["vms"])
@@ -77,9 +80,28 @@ async def get_vm(vm_id: str, db: TenantDB, user: CurrentUser) -> VMResponse:
     dependencies=[OperatorUp],
     summary="Provision a new VM",
 )
-async def create_vm(body: VMCreate, db: TenantDB, user: CurrentUser) -> VMResponse:
+async def create_vm(body: VMCreate, request: Request, db: TenantDB, user: CurrentUser) -> VMResponse:
     service = VMService(db)
-    vm = await service.create(user.tenant_id, body)
+    vm = await service.create(user.tenant_id, body, commit=False)
+    await write_audit_event(
+        db=db,
+        request=request,
+        user=user,
+        action="vm.create",
+        resource_type="vm",
+        resource_id=vm.id,
+        payload={
+            "tenant_id": user.tenant_id,
+            "user_id": user.id,
+            "action": "vm.create",
+            "resource_type": "vm",
+            "resource_id": vm.id,
+        },
+    )
+    await db.commit()
+    await db.refresh(vm)
+    if any(d.backup_enabled for d in vm.disks):
+        asyncio.create_task(service._init_dirty_bitmaps(vm))
     return VMResponse.model_validate(vm, from_attributes=True)
 
 
@@ -116,7 +138,7 @@ async def update_vm(vm_id: str, body: VMUpdate, db: TenantDB, user: CurrentUser)
     dependencies=[TenantAdminUp],
     summary="Delete VM and its disks",
 )
-async def delete_vm(vm_id: str, db: TenantDB, user: CurrentUser) -> None:
+async def delete_vm(vm_id: str, request: Request, db: TenantDB, user: CurrentUser) -> None:
     result = await db.execute(select(VM).where(VM.id == vm_id))
     vm = result.scalar_one_or_none()
     if vm is None:
@@ -128,7 +150,23 @@ async def delete_vm(vm_id: str, db: TenantDB, user: CurrentUser) -> None:
         )
 
     service = VMService(db)
-    await service.destroy(vm)
+    await service.destroy(vm, commit=False)
+    await write_audit_event(
+        db=db,
+        request=request,
+        user=user,
+        action="vm.delete",
+        resource_type="vm",
+        resource_id=vm.id,
+        payload={
+            "tenant_id": user.tenant_id,
+            "user_id": user.id,
+            "action": "vm.delete",
+            "resource_type": "vm",
+            "resource_id": vm.id,
+        },
+    )
+    await db.commit()
 
 
 # ── Power Actions ──────────────────────────────────────────────────────────────
@@ -139,14 +177,31 @@ async def delete_vm(vm_id: str, db: TenantDB, user: CurrentUser) -> None:
     dependencies=[OperatorUp],
     summary="Perform a power action on a VM (start, stop, reboot, pause, resume)",
 )
-async def vm_action(vm_id: str, body: VMActionRequest, db: TenantDB, user: CurrentUser) -> VMResponse:
+async def vm_action(vm_id: str, body: VMActionRequest, request: Request, db: TenantDB, user: CurrentUser) -> VMResponse:
     result = await db.execute(select(VM).where(VM.id == vm_id, VM.status != VMStatus.deleted))
     vm = result.scalar_one_or_none()
     if vm is None:
         raise HTTPException(status_code=404, detail="VM not found")
 
     service = VMService(db)
-    vm = await service.perform_action(vm, body.action, force=body.force)
+    vm = await service.perform_action(vm, body.action, force=body.force, commit=False)
+    await write_audit_event(
+        db=db,
+        request=request,
+        user=user,
+        action="vm.action",
+        resource_type="vm",
+        resource_id=vm.id,
+        payload={
+            "tenant_id": user.tenant_id,
+            "user_id": user.id,
+            "action": "vm.action",
+            "resource_type": "vm",
+            "resource_id": vm.id,
+        },
+    )
+    await db.commit()
+    await db.refresh(vm)
     return VMResponse.model_validate(vm, from_attributes=True)
 
 
