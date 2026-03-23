@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Global reset ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  @apply font-sans text-[13px] antialiased;
+  @apply bg-slate-50 text-slate-900;
+  @apply dark:bg-dark-bg dark:text-[#e8eaf0];
+}
+
+/* ── Custom scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar              { width: 6px; height: 6px; }
+::-webkit-scrollbar-track        { background: transparent; }
+::-webkit-scrollbar-thumb        { @apply bg-slate-300 dark:bg-white/10 rounded; }
+::-webkit-scrollbar-thumb:hover  { @apply bg-slate-400 dark:bg-white/20; }
+
+/* ── Metric mono spans ───────────────────────────────────────────────────── */
+.mono { @apply font-mono text-[11px] text-slate-500 dark:text-gray-400; }
+
+/* ── Accent gradients on stat-card top strips ───────────────────────────── */
+.accent-strip-blue   { background: #4f8ef7; }
+.accent-strip-green  { background: #38d9a9; }
+.accent-strip-amber  { background: #f59e0b; }
+.accent-strip-purple { background: #a78bfa; }
+
+/* ── Transitions ─────────────────────────────────────────────────────────── */
+.transition-theme { transition: background-color 0.2s, border-color 0.2s, color 0.2s; }
