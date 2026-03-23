@@ -9,6 +9,7 @@ import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -360,12 +361,14 @@ class TestRLSPolicyLogic:
     cover all required operations.
     """
 
+    MIGRATION_FILE = Path(__file__).resolve().parents[2] / "app" / "db" / "migrations" / "versions" / "0002_rls_and_triggers.py"
+
     def test_all_tenant_tables_have_policies(self):
         # Import the migration module and check TENANT_TABLES list
         import importlib.util, sys
         spec = importlib.util.spec_from_file_location(
             "mig0002",
-            "/home/claude/novahyper/app/db/migrations/versions/0002_rls_and_triggers.py"
+            self.MIGRATION_FILE
         )
         mod = importlib.util.load_from_spec = None
         # Just verify the constant directly
@@ -373,7 +376,7 @@ class TestRLSPolicyLogic:
             __path__ as _,
         )
         # Read the file and check all expected tables are present
-        with open("/home/claude/novahyper/app/db/migrations/versions/0002_rls_and_triggers.py") as f:
+        with open(self.MIGRATION_FILE, encoding="utf-8") as f:
             source = f.read()
 
         required_tables = ["users", "api_keys", "vms", "backup_jobs", "backup_manifests", "networks"]
@@ -381,18 +384,18 @@ class TestRLSPolicyLogic:
             assert table in source, f"Missing RLS coverage for table: {table}"
 
     def test_disks_has_join_policy(self):
-        with open("/home/claude/novahyper/app/db/migrations/versions/0002_rls_and_triggers.py") as f:
+        with open(self.MIGRATION_FILE, encoding="utf-8") as f:
             source = f.read()
         assert "disks_via_vm" in source
         assert "SELECT id FROM vms" in source
 
     def test_msp_admin_bypass_present(self):
-        with open("/home/claude/novahyper/app/db/migrations/versions/0002_rls_and_triggers.py") as f:
+        with open(self.MIGRATION_FILE, encoding="utf-8") as f:
             source = f.read()
         assert "MSP_ADMIN_BYPASS" in source
 
     def test_audit_log_immutability_trigger_present(self):
-        with open("/home/claude/novahyper/app/db/migrations/versions/0002_rls_and_triggers.py") as f:
+        with open(self.MIGRATION_FILE, encoding="utf-8") as f:
             source = f.read()
         assert "audit_log_immutable" in source
         assert "BEFORE UPDATE OR DELETE" in source

@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_token
 from app.db.session import AsyncSessionLocal, tenant_session
-from app.models import User, UserRole
+from app.models import Tenant, TenantStatus, User, UserRole
 
 _bearer = HTTPBearer(auto_error=True)
 
@@ -56,10 +56,30 @@ async def _get_current_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise credentials_exception
+
+    if user.role != UserRole.msp_admin:
+        tenant_status_result = await db.execute(
+            select(Tenant.status).where(Tenant.id == user.tenant_id)
+        )
+        tenant_status = tenant_status_result.scalar_one_or_none()
+        if tenant_status == TenantStatus.suspended:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant is suspended")
+
     return user
 
 
 async def _get_tenant_db(user: User = Depends(_get_current_user)) -> AsyncSession:  # type: ignore[return]
+    tenant_id = "MSP_ADMIN_BYPASS" if user.role == UserRole.msp_admin else user.tenant_id
+    async with tenant_session(tenant_id) as db:
+        yield db
+
+
+async def get_tenant_db_for_msp(user: User = Depends(_get_current_user)) -> AsyncSession:  # type: ignore[return]
+    if user.role == UserRole.msp_admin:
+        async with AsyncSessionLocal() as db:
+            yield db
+        return
+
     async with tenant_session(user.tenant_id) as db:
         yield db
 
@@ -68,6 +88,7 @@ async def _get_tenant_db(user: User = Depends(_get_current_user)) -> AsyncSessio
 
 CurrentUser = Annotated[User, Depends(_get_current_user)]
 TenantDB    = Annotated[AsyncSession, Depends(_get_tenant_db)]
+TenantDBForMSP = Annotated[AsyncSession, Depends(get_tenant_db_for_msp)]
 PlainDB     = Annotated[AsyncSession, Depends(_get_db)]
 
 

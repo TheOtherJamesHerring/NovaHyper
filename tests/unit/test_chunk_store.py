@@ -233,4 +233,4 @@ def test_chunk_path_structure():
     sha = "abcdef1234567890" * 4  # 64 char hex
     path = _chunk_path(root, sha)
     assert path == root / "ab" / ("cdef1234567890" * 4 + "ab"[2:] if False else sha[2:])
-    assert str(path).startswith("/store/ab/")
+    assert path.parts[-2:] == ("ab", sha[2:])

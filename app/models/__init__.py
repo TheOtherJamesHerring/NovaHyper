@@ -228,6 +228,12 @@ class VM(Base):
         Index("ix_vms_tenant_status", "tenant_id", "status"),
     )
 
+    @property
+    def tags(self) -> dict[str, str]:
+        config = self.config or {}
+        tags = config.get("tags", {})
+        return tags if isinstance(tags, dict) else {}
+
 
 class Disk(Base):
     __tablename__ = "disks"
@@ -356,6 +362,7 @@ class AuditLog(Base):
     resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
     resource_id: Mapped[str | None] = mapped_column(String(128))
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
     ip_address: Mapped[str | None] = mapped_column(String(45))
     user_agent: Mapped[str | None] = mapped_column(String(512))
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)

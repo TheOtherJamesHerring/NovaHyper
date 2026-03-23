@@ -26,6 +26,7 @@ from sqlalchemy.sql import text
 from app.core.config import get_settings
 
 settings = get_settings()
+RLS_RUNTIME_ROLE = "novahyper_rls_runtime"
 
 engine = create_async_engine(
     str(settings.DATABASE_URL),
@@ -68,6 +69,7 @@ async def tenant_session(tenant_id: str) -> AsyncGenerator[AsyncSession, None]:
     """
     async with AsyncSessionLocal() as session:
         async with session.begin():
+            await session.execute(text(f"SET LOCAL ROLE {RLS_RUNTIME_ROLE}"))
             # Activate RLS for this transaction only (SET LOCAL is safe with
             # the connection pool because it reverts on transaction end).
             await session.execute(

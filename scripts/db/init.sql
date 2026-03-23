@@ -13,6 +13,15 @@ CREATE OR REPLACE FUNCTION current_tenant_id() RETURNS TEXT AS $$
   SELECT NULLIF(current_setting('app.tenant_id', true), '')
 $$ LANGUAGE SQL STABLE;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'novahyper_rls_runtime') THEN
+    CREATE ROLE novahyper_rls_runtime NOLOGIN NOSUPERUSER NOBYPASSRLS;
+  END IF;
+  GRANT novahyper_rls_runtime TO CURRENT_USER;
+END;
+$$;
+
 -- ── Audit log protection trigger ──────────────────────────────────────────
 -- Prevents any UPDATE or DELETE on audit_log rows.
 CREATE OR REPLACE FUNCTION audit_log_immutable() RETURNS TRIGGER AS $$

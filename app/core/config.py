@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # ── Prometheus ─────────────────────────────────────────────────────────
     METRICS_ENABLED: bool = True
 
+    # ── Background jobs ────────────────────────────────────────────────────
+    USAGE_METERING_INTERVAL_SECONDS: int = 60
+    PARTITION_MANAGER_INTERVAL_SECONDS: int = 86400
+
     # ── First-run MSP admin bootstrap ─────────────────────────────────────
     BOOTSTRAP_ADMIN_EMAIL: str = ""
     BOOTSTRAP_ADMIN_PASSWORD: str = ""

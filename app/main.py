@@ -19,8 +19,10 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
-from app.api.v1.endpoints import auth, vms, backups
+from app.api.v1.endpoints import auth, backups, tenants, vms
 from app.core.config import get_settings
+from app.services.metering import MeteringService
+from app.services.partition_manager import PartitionManagerService
 
 settings = get_settings()
 log = structlog.get_logger(__name__)
@@ -45,6 +47,18 @@ REQUEST_LATENCY = Histogram(
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log.info("novahyper.startup", version=settings.APP_VERSION, env=settings.ENVIRONMENT)
 
+    partition_manager = PartitionManagerService(
+        interval_seconds=settings.PARTITION_MANAGER_INTERVAL_SECONDS,
+    )
+    await partition_manager.start()
+    app.state.partition_manager = partition_manager
+
+    usage_metering = MeteringService(
+        interval_seconds=settings.USAGE_METERING_INTERVAL_SECONDS,
+    )
+    usage_metering.start()
+    app.state.usage_metering = usage_metering
+
     # Connect to NATS (non-fatal — jobs queue gracefully if unavailable at startup)
     try:
         import nats
@@ -58,6 +72,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield  # App is running
 
     # Shutdown
+    partition_manager = getattr(app.state, "partition_manager", None)
+    if partition_manager is not None:
+        await partition_manager.stop()
+    usage_metering = getattr(app.state, "usage_metering", None)
+    if usage_metering is not None:
+        await usage_metering.stop()
     if getattr(app.state, "nats", None):
         await app.state.nats.close()
     log.info("novahyper.shutdown")
@@ -102,7 +122,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix=API_PREFIX)
     app.include_router(vms.router, prefix=API_PREFIX)
     app.include_router(backups.router, prefix=API_PREFIX)
-    # Future: backups, tenants, storage, networks, audit
+    app.include_router(tenants.router, prefix=API_PREFIX)
+    # Future: storage, networks, audit
 
     # ── Health & metrics ───────────────────────────────────────────────────
     @app.get("/health", tags=["ops"], summary="Liveness probe")

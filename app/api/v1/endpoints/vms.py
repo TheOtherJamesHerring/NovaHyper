@@ -34,7 +34,7 @@ async def list_vms(
     status_filter: VMStatus | None = Query(None, alias="status"),
     search: str | None = Query(None, max_length=128),
 ) -> PaginatedResponse[VMResponse]:
-    q = select(VM).where(VM.status != "deleted")
+    q = select(VM).where(VM.status != VMStatus.deleted)
 
     if status_filter:
         q = q.where(VM.status == status_filter)
@@ -61,7 +61,7 @@ async def list_vms(
 
 @router.get("/{vm_id}", response_model=VMResponse, summary="Get VM details")
 async def get_vm(vm_id: str, db: TenantDB, user: CurrentUser) -> VMResponse:
-    result = await db.execute(select(VM).where(VM.id == vm_id, VM.status != "deleted"))
+    result = await db.execute(select(VM).where(VM.id == vm_id, VM.status != VMStatus.deleted))
     vm = result.scalar_one_or_none()
     if vm is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VM not found")
@@ -99,6 +99,9 @@ async def update_vm(vm_id: str, body: VMUpdate, db: TenantDB, user: CurrentUser)
 
     update_data = body.model_dump(exclude_none=True)
     for field, value in update_data.items():
+        if field == "tags":
+            vm.config = {**(vm.config or {}), "tags": value}
+            continue
         setattr(vm, field, value)
     await db.commit()
     await db.refresh(vm)
