@@ -9,7 +9,7 @@ import { Button } from '../ui/Button'
 export function BackupPanel() {
   const backupsQ = useBackups({ page: 1, page_size: 50 })
   const runningQ = useBackups({ status: 'running', page: 1, page_size: 20 })
-  const vmsQ     = useVMs({ page: 1, page_size: 200 })
+  const vmsQ     = useVMs({ page: 1, page_size: 100 })
   const createM  = useCreateBackup()
 
   const jobs  = backupsQ.data?.items ?? []

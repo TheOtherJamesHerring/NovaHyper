@@ -51,7 +51,7 @@ function ProtectedApp() {
 function NotificationFeed() {
   const { push } = useNotifications()
   const backupsQ = useBackups({ page: 1, page_size: 50 }, { refetchInterval: 30_000 })
-  const vmsQ     = useVMs({ page: 1, page_size: 200 }, { refetchInterval: 30_000 })
+  const vmsQ     = useVMs({ page: 1, page_size: 100 }, { refetchInterval: 30_000 })
 
   const lastBackupSeen = useRef<string>('')
   const erroredVMSet   = useRef<Set<string>>(new Set())

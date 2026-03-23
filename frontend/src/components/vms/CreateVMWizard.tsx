@@ -137,7 +137,7 @@ const INIT: WizardState = {
   ram_mb:        4096,
   disk_gb:       80,
   disk_format:   'qcow2',
-  storage_pool:  'pool-default',
+  storage_pool:  '11111111-1111-4111-8111-111111111112',
   network:       'default',
   backup_policy: 'daily',
   description:   '',
@@ -187,7 +187,7 @@ export function CreateVMWizard({ open, onClose, onSubmit, loading }: CreateVMWiz
       ram_mb:      form.ram_mb,
       os_type:     ['windows'].includes(form.osKey) ? 'windows' : form.osKey === 'freebsd' ? 'bsd' : 'linux',
       os_variant:  form.osKey,
-      host_id:     'auto',
+      host_id:     '11111111-1111-4111-8111-111111111111',
       disks: [{
         size_gb:         form.disk_gb,
         disk_format:     form.disk_format,
@@ -305,9 +305,7 @@ export function CreateVMWizard({ open, onClose, onSubmit, loading }: CreateVMWiz
             value={form.storage_pool}
             onChange={e => set({ storage_pool: e.target.value })}
             options={[
-              { value: 'pool-default', label: 'ZFS tank0 — local · 8.2 TB free' },
-              { value: 'pool-ceph',    label: 'Ceph RBD pool-1 — 12 TB free'    },
-              { value: 'pool-nfs',     label: 'NFS share01 — 2.1 TB free'       },
+              { value: '11111111-1111-4111-8111-111111111112', label: 'ZFS tank0 — local · 8.2 TB free' },
             ]}
           />
           <Select

@@ -9,8 +9,8 @@ import { Skeleton } from '../components/ui/Skeleton'
 const DashboardCharts = lazy(() => import('../components/charts/DashboardCharts'))
 
 export function DashboardPage() {
-  const vmQ      = useVMs({ page: 1, page_size: 200 })
-  const backupsQ = useBackups({ page: 1, page_size: 200 })
+  const vmQ      = useVMs({ page: 1, page_size: 100 })
+  const backupsQ = useBackups({ page: 1, page_size: 100 })
 
   const vms      = vmQ.data?.items ?? []
   const backups  = backupsQ.data?.items ?? []

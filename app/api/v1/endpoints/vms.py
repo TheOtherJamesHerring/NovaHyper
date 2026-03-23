@@ -98,8 +98,9 @@ async def create_vm(body: VMCreate, request: Request, db: TenantDB, user: Curren
             "resource_id": vm.id,
         },
     )
-    await db.commit()
+    await db.flush()
     await db.refresh(vm)
+    await db.commit()
     if any(d.backup_enabled for d in vm.disks):
         asyncio.create_task(service._init_dirty_bitmaps(vm))
     return VMResponse.model_validate(vm, from_attributes=True)
@@ -201,7 +202,6 @@ async def vm_action(vm_id: str, body: VMActionRequest, request: Request, db: Ten
         },
     )
     await db.commit()
-    await db.refresh(vm)
     return VMResponse.model_validate(vm, from_attributes=True)
 
 
