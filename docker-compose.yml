@@ -41,9 +41,9 @@ services:
       - ./frontend:/app
     ports:
       - "5173:5173"
-    command: sh -c "npm install && npm run dev -- --host"
+    command: sh -c "npm install && npm run dev -- --host --port 5173"
     environment:
-      VITE_API_BASE_URL: "http://localhost:8000/api/v1"
+      VITE_API_BASE_URL: "http://localhost:8000"
 
   # ── PostgreSQL ────────────────────────────────────────────────────────────
   postgres:
